@@ -33,6 +33,7 @@
 #include "openslide-features.h"
 
 #include <stdint.h>
+#include <glib.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -87,6 +88,12 @@ const char *openslide_detect_vendor(const char *filename);
  */
 OPENSLIDE_PUBLIC()
 openslide_t *openslide_open(const char *filename);
+struct _openslide_tifflike;
+struct _openslide_hash;
+typedef bool (*open_t)(openslide_t *osr, const char *filename,
+               struct _openslide_tifflike *tl,
+               struct _openslide_hash *quickhash1, GError **err);
+openslide_t *openslide_open_format(const char *filename, const char *format_name, const char *format_vendor, open_t format_open);
 
 
 /**

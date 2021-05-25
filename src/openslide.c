@@ -224,18 +224,11 @@ static const char **strv_from_hashtable_keys(GHashTable *h) {
   return result;
 }
 
-openslide_t *openslide_open(const char *filename) {
+static openslide_t *_openslide_open(const char *filename, const struct _openslide_format *format, struct _openslide_tifflike *tl) {
   GError *tmp_err = NULL;
 
   g_assert(openslide_was_dynamically_loaded);
 
-  // detect format
-  struct _openslide_tifflike *tl;
-  const struct _openslide_format *format = detect_format(filename, &tl);
-  if (!format) {
-    // not a slide file
-    return NULL;
-  }
 
   // alloc memory
   openslide_t *osr = create_osr();
@@ -340,6 +333,32 @@ openslide_t *openslide_open(const char *filename) {
   return osr;
 }
 
+openslide_t *openslide_open(const char *filename) {
+  // detect format
+  struct _openslide_tifflike *tl;
+  const struct _openslide_format *format = detect_format(filename, &tl);
+  if (!format) {
+    // not a slide file
+    return NULL;
+  }
+  return _openslide_open(filename, format, tl);
+}
+
+static bool dummy_detect(const char *filename G_GNUC_UNUSED,
+                  struct _openslide_tifflike *tl G_GNUC_UNUSED, GError **err G_GNUC_UNUSED) {
+  return true;
+}
+
+openslide_t *openslide_open_format(const char *filename, const char *format_name, const char *format_vendor, open_t format_open) {
+  g_assert(format_name && format_vendor && format_open);
+  const struct _openslide_format format = {
+    .name = format_name,
+    .vendor = format_vendor,
+    .detect = dummy_detect,
+    .open = format_open,
+  };
+  return _openslide_open(filename, &format, NULL);
+}
 
 void openslide_close(openslide_t *osr) {
   if (osr->ops) {
