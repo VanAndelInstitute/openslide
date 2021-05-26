@@ -224,25 +224,9 @@ static const char **strv_from_hashtable_keys(GHashTable *h) {
   return result;
 }
 
-static openslide_t *_openslide_open(const char *filename, const struct _openslide_format *format, struct _openslide_tifflike *tl) {
-  GError *tmp_err = NULL;
-
+static openslide_t *_openslide_open(openslide_t *osr, const char *vendor) {
+  
   g_assert(openslide_was_dynamically_loaded);
-
-
-  // alloc memory
-  openslide_t *osr = create_osr();
-
-  // open backend
-  struct _openslide_hash *quickhash1 = NULL;
-  bool success = open_backend(osr, format, filename, tl, &quickhash1,
-                              &tmp_err);
-  _openslide_tifflike_destroy(tl);
-  if (!success) {
-    // failed to read slide
-    _openslide_propagate_error(osr, tmp_err);
-    return osr;
-  }
   g_assert(osr->levels);
 
   // compute downsamples if not done already
@@ -269,24 +253,14 @@ static openslide_t *_openslide_open(const char *filename, const struct _openslid
       g_warning("Downsampled images not correctly ordered: %g < %g",
 		osr->levels[i]->downsample, osr->levels[i - 1]->downsample);
       openslide_close(osr);
-      _openslide_hash_destroy(quickhash1);
       return NULL;
     }
   }
 
-  // set hash property
-  const char *hash_str = _openslide_hash_get_string(quickhash1);
-  if (hash_str != NULL) {
-    g_hash_table_insert(osr->properties,
-                        g_strdup(OPENSLIDE_PROPERTY_NAME_QUICKHASH1),
-                        g_strdup(hash_str));
-  }
-  _openslide_hash_destroy(quickhash1);
-
   // set other properties
   g_hash_table_insert(osr->properties,
                       g_strdup(OPENSLIDE_PROPERTY_NAME_VENDOR),
-                      g_strdup(format->vendor));
+                      g_strdup(vendor));
   g_hash_table_insert(osr->properties,
 		      g_strdup(_OPENSLIDE_PROPERTY_NAME_LEVEL_COUNT),
 		      g_strdup_printf("%d", osr->level_count));
@@ -341,23 +315,53 @@ openslide_t *openslide_open(const char *filename) {
     // not a slide file
     return NULL;
   }
-  return _openslide_open(filename, format, tl);
+
+  // alloc memory
+  openslide_t *osr = create_osr();
+
+  // open backend
+  struct _openslide_hash *quickhash1 = NULL;
+  GError *tmp_err = NULL;
+  bool success = open_backend(osr, format, filename, tl, &quickhash1,
+                              &tmp_err);
+  _openslide_tifflike_destroy(tl);
+  if (!success) {
+    // failed to read slide
+    _openslide_propagate_error(osr, tmp_err);
+    return osr;
+  }
+
+  // set hash property
+  const char *hash_str = _openslide_hash_get_string(quickhash1);
+  if (hash_str != NULL) {
+    g_hash_table_insert(osr->properties,
+                        g_strdup(OPENSLIDE_PROPERTY_NAME_QUICKHASH1),
+                        g_strdup(hash_str));
+  }
+  _openslide_hash_destroy(quickhash1);
+
+  return _openslide_open(osr, format->vendor);
 }
 
-static bool dummy_detect(const char *filename G_GNUC_UNUSED,
-                  struct _openslide_tifflike *tl G_GNUC_UNUSED, GError **err G_GNUC_UNUSED) {
-  return true;
-}
-
-openslide_t *openslide_open_format(const char *filename, const char *format_name, const char *format_vendor, open_t format_open) {
-  g_assert(format_name && format_vendor && format_open);
-  const struct _openslide_format format = {
-    .name = format_name,
-    .vendor = format_vendor,
-    .detect = dummy_detect,
-    .open = format_open,
-  };
-  return _openslide_open(filename, &format, NULL);
+openslide_t *openslide_open_custom(const char *filename,
+                                   const char *vendor,
+                                   open_fn_t open_fn) {
+  g_assert(vendor && open_fn);
+  openslide_t *osr = create_osr();
+  GError *err;
+  bool result = open_fn(osr, filename, &err);
+    // check for error-handling bugs in open function
+  if (!result && !err) {
+    g_warning("%s opener failed without setting error", filename);
+    // assume the worst
+    g_set_error(&err, OPENSLIDE_ERROR, OPENSLIDE_ERROR_FAILED,
+                "Unknown error");
+  }
+  if (result && err) {
+    g_warning("%s opener succeeded but set error", filename);
+    result = false;
+  }
+  return _openslide_open(osr, vendor);
 }
 
 void openslide_close(openslide_t *osr) {
