@@ -21,9 +21,7 @@
  */
 
 /*
- * Aperio (svs, tif) support
- *
- * quickhash comes from _openslide_tifflike_init_properties_and_hash
+ * Remote Aperio (svs, tif) support
  *
  */
 
@@ -40,8 +38,6 @@
 #include <stdlib.h>
 #include <math.h>
 #include <tiffio.h>
-
-static const char APERIO_DESCRIPTION[] = "Aperio";
 
 #define APERIO_COMPRESSION_JP2K_YCBCR 33003
 #define APERIO_COMPRESSION_JP2K_RGB   33005
@@ -263,38 +259,6 @@ static const struct _openslide_ops aperio_ops = {
   .destroy = destroy,
 };
 
-static bool aperio_detect(const char *filename G_GNUC_UNUSED,
-                          struct _openslide_tifflike *tl, GError **err) {
-  // ensure we have a TIFF
-  if (!tl) {
-    g_set_error(err, OPENSLIDE_ERROR, OPENSLIDE_ERROR_FAILED,
-                "Not a TIFF file");
-    return false;
-  }
-
-  // ensure TIFF is tiled
-  if (!_openslide_tifflike_is_tiled(tl, 0)) {
-    g_set_error(err, OPENSLIDE_ERROR, OPENSLIDE_ERROR_FAILED,
-                "TIFF is not tiled");
-    return false;
-  }
-
-  // check ImageDescription
-  const char *tagval = _openslide_tifflike_get_buffer(tl, 0,
-                                                      TIFFTAG_IMAGEDESCRIPTION,
-                                                      err);
-  if (!tagval) {
-    return false;
-  }
-  if (!g_str_has_prefix(tagval, APERIO_DESCRIPTION)) {
-    g_set_error(err, OPENSLIDE_ERROR, OPENSLIDE_ERROR_FAILED,
-                "Not an Aperio slide");
-    return false;
-  }
-
-  return true;
-}
-
 static void add_properties(openslide_t *osr, char **props) {
   if (*props == NULL) {
     return;
@@ -400,10 +364,9 @@ static void propagate_missing_tile(void *key, void *value G_GNUC_UNUSED,
   g_hash_table_insert(next_l->missing_tiles, next_tile_no, NULL);
 }
 
-static bool aperio_open(openslide_t *osr,
-                        const char *filename,
-                        struct _openslide_tifflike *tl,
-                        struct _openslide_hash *quickhash1, GError **err) {
+bool aperio_open(openslide_t *osr,
+                 const char *filename,
+                 GError **err) {
   struct level **levels = NULL;
   int32_t level_count = 0;
 
@@ -553,9 +516,6 @@ static bool aperio_open(openslide_t *osr,
   char **props = g_strsplit(image_desc, "|", -1);
   add_properties(osr, props);
   g_strfreev(props);
-
-  // don't set hash property
-  _openslide_hash_disable(quickhash1);  
 
   // store osr data
   g_assert(osr->data == NULL);
