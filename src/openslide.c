@@ -230,12 +230,13 @@ openslide_t *openslide_open(const char *filename) {
   g_assert(openslide_was_dynamically_loaded);
 
   // detect format
-  struct _openslide_tifflike *tl;
-  const struct _openslide_format *format = detect_format(filename, &tl);
-  if (!format) {
-    // not a slide file
-    return NULL;
-  }
+  struct _openslide_tifflike *tl = NULL;
+  const struct _openslide_format *format = &_openslide_format_aperio;
+  // const struct _openslide_format *format = detect_format(filename, &tl);
+  // if (!format) {
+  //   // not a slide file
+  //   return NULL;
+  // }
 
   // alloc memory
   openslide_t *osr = create_osr();

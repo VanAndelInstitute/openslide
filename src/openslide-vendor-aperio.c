@@ -409,7 +409,7 @@ static void propagate_missing_tile(void *key, void *value G_GNUC_UNUSED,
 
 static bool aperio_open(openslide_t *osr,
                         const char *filename,
-                        struct _openslide_tifflike *tl,
+                        struct _openslide_tifflike *tl G_GNUC_UNUSED,
                         struct _openslide_hash *quickhash1, GError **err) {
   struct aperio_ops_data *data = NULL;
   struct level **levels = NULL;
@@ -565,13 +565,8 @@ static bool aperio_open(openslide_t *osr,
   add_properties(osr, props);
   g_strfreev(props);
 
-  // set hash and properties
-  if (!_openslide_tifflike_init_properties_and_hash(osr, tl, quickhash1,
-                                                    levels[level_count - 1]->tiffl.dir,
-                                                    0,
-                                                    err)) {
-    goto FAIL;
-  }
+  // DON'T set quickhash property
+  _openslide_hash_disable(quickhash1);
 
   // store osr data
   g_assert(osr->data == NULL);
