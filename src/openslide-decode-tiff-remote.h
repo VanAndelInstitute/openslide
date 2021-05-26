@@ -24,15 +24,16 @@
 
 #include "openslide-private.h"
 
-#include <stdint.h>
 #include <glib.h>
 #include <tiffio.h>
 
+TIFF *_openslide_tiff_open(const char *uri, GError **err);
 
-struct _openslide_tiffcache;
-
-/* TIFF handles are not thread-safe, so we have a handle cache for
-   multithreaded access */
-TIFF *_openslide_tiffcache_get_remote(struct _openslide_tiffcache *tc, GError **err);
+bool _openslide_tiff_add_associated_image_remote(
+  openslide_t *osr,
+  const char *name,
+  TIFF *tiff,
+  tdir_t dir,
+  GError **err);
 
 #endif

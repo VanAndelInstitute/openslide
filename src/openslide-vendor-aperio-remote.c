@@ -51,12 +51,15 @@ struct level {
   uint16_t compression;
 };
 
-static void destroy_data(struct _openslide_tiffcache *tc,
-                         struct level **levels, int32_t level_count) {
-  _openslide_tiffcache_destroy(tc);
-
+static void destroy(openslide_t *osr) {
+  if (osr == NULL) return;
+  TIFF *tiff = osr->data;
+  if(tiff != NULL) {
+    TIFFClose(tiff);
+  }
+  struct level **levels = (struct level **) osr->levels;
   if (levels) {
-    for (int32_t i = 0; i < level_count; i++) {
+    for (int32_t i = 0; i < osr->level_count; i++) {
       if (levels[i]) {
         if (levels[i]->missing_tiles) {
           g_hash_table_destroy(levels[i]->missing_tiles);
@@ -67,12 +70,6 @@ static void destroy_data(struct _openslide_tiffcache *tc,
     }
     g_free(levels);
   }
-}
-
-static void destroy(openslide_t *osr) {
-  struct _openslide_tiffcache *tc = osr->data;
-  struct level **levels = (struct level **) osr->levels;
-  destroy_data(tc, levels, osr->level_count);
 }
 
 static bool render_missing_tile(struct level *l,
@@ -236,22 +233,17 @@ static bool paint_region(openslide_t *osr, cairo_t *cr,
 			 struct _openslide_level *level,
 			 int32_t w, int32_t h,
 			 GError **err) {
-  struct _openslide_tiffcache *tc = osr->data;
   struct level *l = (struct level *) level;
-
-  TIFF *tiff = _openslide_tiffcache_get_remote(tc, err);
+  TIFF *tiff = osr->data;
   if (tiff == NULL) {
     return false;
   }
 
-  bool success = _openslide_grid_paint_region(l->grid, cr, tiff,
+  return _openslide_grid_paint_region(l->grid, cr, tiff,
                                               x / l->base.downsample,
                                               y / l->base.downsample,
                                               level, w, h,
                                               err);
-  _openslide_tiffcache_put(tc, tiff);
-
-  return success;
 }
 
 static const struct _openslide_ops aperio_ops = {
@@ -294,7 +286,6 @@ static void add_properties(openslide_t *osr, char **props) {
 // true does not necessarily imply an image was added
 static bool add_associated_image(openslide_t *osr,
                                  const char *name_if_available,
-                                 struct _openslide_tiffcache *tc,
                                  TIFF *tiff,
                                  GError **err) {
   char *name = NULL;
@@ -331,9 +322,10 @@ static bool add_associated_image(openslide_t *osr,
     return true;
   }
 
-  bool result = _openslide_tiff_add_associated_image(osr, name, tc,
-                                                     TIFFCurrentDirectory(tiff),
-                                                     err);
+  bool result = _openslide_tiff_add_associated_image_remote(
+    osr, name, tiff,
+    TIFFCurrentDirectory(tiff),
+    err);
   g_free(name);
   return result;
 }
@@ -371,8 +363,7 @@ bool aperio_open(openslide_t *osr,
   int32_t level_count = 0;
 
   // open TIFF
-  struct _openslide_tiffcache *tc = _openslide_tiffcache_create(filename);
-  TIFF *tiff = _openslide_tiffcache_get_remote(tc, err);
+  TIFF *tiff = _openslide_tiff_open(filename, err);
   if (!tiff) {
     goto FAIL;
   }
@@ -489,7 +480,7 @@ bool aperio_open(openslide_t *osr,
     } else {
       // associated image
       const char *name = (dir == 1) ? "thumbnail" : NULL;
-      if (!add_associated_image(osr, name, tc, tiff, err)) {
+      if (!add_associated_image(osr, name, tiff, err)) {
 	goto FAIL;
       }
       //g_debug("associated image: %d", dir);
@@ -523,16 +514,11 @@ bool aperio_open(openslide_t *osr,
   osr->levels = (struct _openslide_level **) levels;
   osr->level_count = level_count;
   osr->ops = &aperio_ops;
-
-  // put TIFF handle and store tiffcache reference
-  _openslide_tiffcache_put(tc, tiff);
-  osr->data = tc;
+  osr->data = tiff;
 
   return true;
 
 FAIL:
-  destroy_data(tc, levels, level_count);
-  _openslide_tiffcache_put(tc, tiff);
-  _openslide_tiffcache_destroy(tc);
+  destroy(osr);
   return false;
 }
