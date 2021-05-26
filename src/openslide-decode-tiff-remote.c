@@ -38,10 +38,10 @@ struct _openslide_tiffcache {
 static tsize_t tiff_do_read(thandle_t th, tdata_t buf, tsize_t size)
 {
   GError *err;
-  return g_input_stream_read( (GDataInputStream *) th, buf, size, NULL, &err );
+  return g_input_stream_read( (GInputStream *) th, buf, size, NULL, &err );
 }
 
-static tsize_t tiff_do_write(thandle_t th, tdata_t buf, tsize_t size)
+static tsize_t tiff_do_write(thandle_t th G_GNUC_UNUSED, tdata_t buf G_GNUC_UNUSED, tsize_t size G_GNUC_UNUSED)
 {
   // fail
   return 0;
@@ -59,7 +59,7 @@ static toff_t tiff_do_seek(thandle_t th, toff_t offset, int whence)
 static int tiff_do_close(thandle_t th)
 {
   GError *err;
-  gboolean result = g_input_stream_close( (GDataInputStream *) th, NULL, &err );
+  gboolean result = g_input_stream_close( (GInputStream *) th, NULL, &err );
   g_object_unref(th);
   return result ? 0 : -1;
 }
@@ -73,6 +73,7 @@ static toff_t tiff_do_size(thandle_t th)
   return (toff_t)g_file_info_get_size(info);
 }
 
+#undef TIFFClientOpen
 static TIFF *tiff_open(const char *uri, GError **err) {
   // open
   GFile *file = g_file_new_for_uri(uri);
@@ -80,7 +81,7 @@ static TIFF *tiff_open(const char *uri, GError **err) {
     _openslide_io_error(err, "Couldn't open %s", uri);
     return NULL;
 	}
-  GFileInputStream *base_stream = g_file_read (file, NULL, err);
+  GInputStream *base_stream = (GInputStream*)g_file_read (file, NULL, err);
   g_object_unref(file);
   if (base_stream == NULL) {
     return NULL;
@@ -91,14 +92,14 @@ static TIFF *tiff_open(const char *uri, GError **err) {
     g_object_unref(base_stream);
     return NULL;
 	}
-  g_filter_input_stream_set_close_base_stream(stream, TRUE);
+  g_filter_input_stream_set_close_base_stream((GFilterInputStream*)stream, TRUE);
 
   // read magic
   guchar byte_order = g_data_input_stream_read_byte(stream, NULL, err);
   if (g_data_input_stream_read_byte(stream, NULL, err) != byte_order) {
       g_set_error(err, OPENSLIDE_ERROR, OPENSLIDE_ERROR_FAILED,
                   "Not a TIFF file: %s", uri);
-      g_input_stream_close(stream, NULL, err);
+      g_input_stream_close((GInputStream*)stream, NULL, err);
       g_object_unref(stream);
       return NULL;
   }
@@ -112,13 +113,13 @@ static TIFF *tiff_open(const char *uri, GError **err) {
     case 0:
       g_set_error(err, OPENSLIDE_ERROR, OPENSLIDE_ERROR_FAILED,
                   "Couldn't read TIFF magic number for %s", uri);
-      g_input_stream_close(stream, NULL, err);
+      g_input_stream_close((GInputStream*)stream, NULL, err);
       g_object_unref(stream);
       return NULL;
     default:
       g_set_error(err, OPENSLIDE_ERROR, OPENSLIDE_ERROR_FAILED,
                   "Not a TIFF file: %s", uri);
-      g_input_stream_close(stream, NULL, err);
+      g_input_stream_close((GInputStream*)stream, NULL, err);
       g_object_unref(stream);
       return NULL;
   }
@@ -127,7 +128,7 @@ static TIFF *tiff_open(const char *uri, GError **err) {
   if (version != 42 && version != 43) {
     g_set_error(err, OPENSLIDE_ERROR, OPENSLIDE_ERROR_FAILED,
                 "Not a TIFF file: %s", uri);
-    g_input_stream_close(stream, NULL, err);
+    g_input_stream_close((GInputStream*)stream, NULL, err);
     g_object_unref(stream);
     return NULL;
   }
@@ -140,7 +141,7 @@ static TIFF *tiff_open(const char *uri, GError **err) {
   if( tiff == NULL ) {
     g_set_error(err, OPENSLIDE_ERROR, OPENSLIDE_ERROR_FAILED,
                 "Invalid TIFF: %s", uri);
-    g_input_stream_close(stream, NULL, err);
+    g_input_stream_close((GInputStream*)stream, NULL, err);
     g_object_unref(stream);
   }
       
