@@ -370,6 +370,7 @@ void openslide_cancel_prefetch_hint(openslide_t *osr, int prefetch_id);
 
 #ifdef HAVE_GDAL
 #include <cpl_vsi.h>
+#include <cpl_error.h>
 #else
 typedef unsigned long long vsi_l_offset;
 typedef FILE VSILFILE;
